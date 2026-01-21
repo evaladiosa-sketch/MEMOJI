@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mémo J - Ultimate</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Config Tailwind -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' },
+                        forest: { 50: '#f0fdf4', 100: '#dcfce7', 200: '#bbf7d0', 600: '#16a34a', 700: '#15803d', 800: '#166534', 900: '#14532d' }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- React via CDN (Plus stable pour le standalone) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        // Configuration
+        const { useState, useEffect, useRef, createElement } = React;
+        const { createRoot } = ReactDOM;
+
+        // Icons map (Lucide via global script injection usually requires specific handling, 
+        // using SVG strings or simple components here for reliability in standalone)
+        const Icon = ({ name, size = 18, className }) => {
+            if (window.lucide && window.lucide.icons[name]) {
+                const icon = window.lucide.icons[name];
+                // Convert Lucide icon to SVG string and render safely
+                // For simplicity in this standalone, we rely on lucide.createIcons logic or SVG
+                // But React createElement needs components. 
+                // Fallback: simple text if icon fails, or specific SVGs. 
+                // Let's use a simpler approach: Lucide creates <i> tags usually.
+                // We will render an <i> and let lucide.createIcons() run in useEffect.
+                return createElement('i', { 'data-lucide': name, className: className, style: { width: size, height: size } });
+            }
+            return null;
+        };
+
+        const THEMES = {
+            slate: { id: "slate", label: "Polaire", type: "image", bgImage: 'url("https://images.unsplash.com/photo-1491002052546-bf38f186af56?auto=format&fit=crop&q=80&w=2500")', text: "text-slate-900", accent: "indigo", cardBg: "bg-white", ring: "ring-indigo-500", btnColor: "bg-indigo-600 hover:bg-indigo-700" },
+            jungle: { id: "jungle", label: "Jungle", type: "image", bgImage: 'url("https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?auto=format&fit=crop&q=80&w=2500")', text: "text-emerald-950", accent: "emerald", cardBg: "bg-white", ring: "ring-emerald-500", btnColor: "bg-emerald-600 hover:bg-emerald-700" },
+            twilight: { id: "twilight", label: "Sunset", type: "image", bgImage: "linear-gradient(135deg, #fdba74 0%, #fb923c 40%, #e879f9 70%, #be185d 100%)", text: "text-fuchsia-950", accent: "fuchsia", cardBg: "bg-white", ring: "ring-fuchsia-500", btnColor: "bg-gradient-to-r from-orange-500 to-fuchsia-600 hover:from-orange-600 hover:to-fuchsia-700" },
+            duck: { id: "duck", label: "Lagon", type: "image", bgImage: 'url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=2500")', text: "text-teal-900", accent: "teal", cardBg: "bg-white", ring: "ring-teal-500", btnColor: "bg-teal-600 hover:bg-teal-700" },
+            aurore: { id: "aurore", label: "Aurore", type: "image", bgImage: 'url("https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&q=80&w=2500")', text: "text-indigo-900", accent: "violet", cardBg: "bg-white", ring: "ring-violet-400", btnColor: "bg-violet-600 hover:bg-violet-700" },
+        };
+
+        const MASTERY_LEVELS = [
+            { level: 0, label: "Non évalué", style: { light: "text-slate-400 bg-slate-100", dark: "text-slate-500 bg-slate-800" } },
+            { level: 1, label: "Non su", style: { light: "text-rose-600 bg-rose-100", dark: "text-rose-400 bg-rose-900/40" } },
+            { level: 2, label: "Moyen", style: { light: "text-orange-600 bg-orange-100", dark: "text-orange-400 bg-orange-900/40" } },
+            { level: 3, label: "Bien", style: { light: "text-blue-600 bg-blue-100", dark: "text-blue-400 bg-blue-900/40" } },
+            { level: 4, label: "Expert", style: { light: "text-emerald-600 bg-emerald-100", dark: "text-emerald-400 bg-emerald-900/40" } },
+        ];
+
+        const PATTERNS = {
+            standard: { id: "standard", label: "Classique", description: "J0, J1, J3, J7...", sequence: [0, 1, 3, 7, 14, 30, 60, 90], style: { light: "bg-indigo-50 text-indigo-700 border-indigo-100", dark: "bg-indigo-900/30 text-indigo-300 border-indigo-800" } },
+            intensive: { id: "intensive", label: "Intensif", description: "J0, J1, J2, J4...", sequence: [0, 1, 2, 4, 7, 10, 14, 21], style: { light: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100", dark: "bg-fuchsia-900/30 text-fuchsia-300 border-fuchsia-800" } },
+            las: { id: "las", label: "Spécial LAS", description: "J0, J2, J7, J14, J28", sequence: [0, 2, 7, 14, 28], style: { light: "bg-sky-50 text-sky-700 border-sky-100", dark: "bg-sky-900/30 text-sky-300 border-sky-800" } },
+            zen: { id: "zen", label: "Zen", description: "J0, J2, J5, J10...", sequence: [0, 2, 5, 10, 20, 30, 60], style: { light: "bg-emerald-50 text-emerald-700 border-emerald-100", dark: "bg-emerald-900/30 text-emerald-300 border-emerald-800" } },
+            custom: { id: "custom", label: "Perso", description: "Séquence libre", sequence: [], style: { light: "bg-slate-50 text-slate-700 border-slate-200", dark: "bg-slate-800 text-slate-300 border-slate-700" } },
+        };
+
+        // --- COMPOSANTS ---
+
+        function App() {
+            const [tasks, setTasks] = useState(() => {
+                const saved = localStorage.getItem("memo-j-tasks-v14");
+                return saved ? JSON.parse(saved) : [
+                    { id: 1, title: "Anatomie du Cœur", currentStep: 2, patternId: "las", dueDate: new Date().toISOString().split("T")[0], status: "pending", mastery: 0 },
+                    { id: 2, title: "Histoire du Droit", currentStep: 0, patternId: "standard", dueDate: new Date(Date.now() - 86400000).toISOString().split("T")[0], status: "pending", mastery: 2 }
+                ];
+            });
+
+            const [darkMode, setDarkMode] = useState(() => {
+                const saved = localStorage.getItem("memo-j-darkmode");
+                return saved ? JSON.parse(saved) : false;
+            });
+
+            const [theme, setTheme] = useState(() => {
+                const saved = localStorage.getItem("memo-j-theme");
+                return THEMES[saved] ? saved : "slate";
+            });
+
+            const [viewMode, setViewMode] = useState("list");
+            const [newTask, setNewTask] = useState("");
+            const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
+            const [selectedPattern, setSelectedPattern] = useState("standard");
+            const [customSequenceStr, setCustomSequenceStr] = useState("0, 1, 3, 7, 14, 30");
+            const [searchQuery, setSearchQuery] = useState("");
+            const fileInputRef = useRef(null);
+
+            // Re-run Lucide icons on render
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+
+            useEffect(() => { localStorage.setItem("memo-j-tasks-v14", JSON.stringify(tasks)); }, [tasks]);
+            useEffect(() => { localStorage.setItem("memo-j-theme", theme); }, [theme]);
+            useEffect(() => {
+                localStorage.setItem("memo-j-darkmode", JSON.stringify(darkMode));
+                if (darkMode) document.documentElement.classList.add("dark");
+                else document.documentElement.classList.remove("dark");
+            }, [darkMode]);
+
+            // Actions
+            const addTask = (e) => {
+                e.preventDefault();
+                if (!newTask.trim()) return;
+                let finalCustomSequence = null;
+                if (selectedPattern === "custom") {
+                    const seq = customSequenceStr.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n)).sort((a, b) => a - b);
+                    if (seq.length === 0) { alert("Séquence invalide"); return; }
+                    finalCustomSequence = seq;
+                }
+                const task = {
+                    id: Date.now(), title: newTask, currentStep: 0, patternId: selectedPattern,
+                    customSequence: finalCustomSequence, dueDate: newDate, status: "pending", mastery: 0
+                };
+                setTasks([...tasks, task]);
+                setNewTask("");
+            };
+
+            const toggleMastery = (id) => {
+                setTasks(tasks.map(t => t.id === id ? { ...t, mastery: (t.mastery + 1) % MASTERY_LEVELS.length } : t));
+            };
+
+            const completeReview = (id) => {
+                setTasks(tasks.map(t => {
+                    if (t.id === id) {
+                        const sequence = t.patternId === "custom" && t.customSequence ? t.customSequence : PATTERNS[t.patternId]?.sequence || PATTERNS.standard.sequence;
+                        const nextStep = t.currentStep + 1;
+                        if (nextStep >= sequence.length) return { ...t, status: "completed", dueDate: "Terminé !" };
+                        const daysToAdd = sequence[nextStep] - (sequence[t.currentStep] || 0);
+                        const nextDate = new Date(); nextDate.setDate(nextDate.getDate() + daysToAdd);
+                        return { ...t, currentStep: nextStep, dueDate: nextDate.toISOString().split("T")[0], status: "pending" };
+                    }
+                    return t;
+                }));
+            };
+
+            const shiftDate = (id, days) => {
+                setTasks(tasks.map(t => {
+                    if (t.id === id && t.status !== "completed") {
+                        const current = new Date(t.dueDate); current.setDate(current.getDate() + days);
+                        return { ...t, dueDate: current.toISOString().split("T")[0] };
+                    }
+                    return t;
+                }));
+            };
+
+            const updateTaskDate = (id, newDate) => {
+                setTasks(tasks.map(t => t.id === id ? { ...t, dueDate: newDate } : t));
+            };
+
+            const deleteTask = (id) => setTasks(tasks.filter(t => t.id !== id));
+
+            const exportData = () => {
+                const blob = new Blob([JSON.stringify(tasks, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a"); link.href = url; link.download = `memo-j-backup-${new Date().toISOString().split("T")[0]}.json`; link.click();
+            };
+
+            const importData = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try { setTasks(JSON.parse(ev.target.result)); alert("Chargé !"); } catch (err) { alert("Erreur."); }
+                };
+                reader.readAsText(file);
+            };
+
+            const today = new Date().toISOString().split("T")[0];
+            const activeTheme = THEMES[theme] || THEMES.slate;
+            const filteredTasks = tasks.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()));
+            const overdueTasks = filteredTasks.filter(t => t.status !== "completed" && t.dueDate < today).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+            const todayTasks = filteredTasks.filter(t => t.status !== "completed" && t.dueDate === today);
+            const futureTasks = filteredTasks.filter(t => t.status !== "completed" && t.dueDate > today).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+            const completedTasks = filteredTasks.filter(t => t.status === "completed");
+
+            return createElement("div", {
+                className: `min-h-screen font-sans transition-all duration-500 bg-cover bg-center bg-fixed ${activeTheme.text} ${darkMode ? "text-slate-100" : ""}`,
+                style: { backgroundImage: activeTheme.type === "image" ? activeTheme.bgImage : "none", backgroundColor: activeTheme.type === "color" ? (darkMode ? "#0f172a" : "#f8fafc") : "transparent" }
+            },
+            createElement("div", { className: `min-h-screen w-full transition-colors duration-500 ${darkMode ? "bg-slate-900/85" : (activeTheme.type === "image" ? "bg-white/20" : "")}` },
+                createElement("div", { className: "p-4 md:p-6 pb-20 max-w-4xl mx-auto" },
+                    // HEADER
+                    createElement("div", { className: "flex flex-col gap-6 mb-8" },
+                        createElement("div", { className: "flex flex-col md:flex-row md:items-center justify-between gap-4" },
+                            createElement("h1", { className: `text-3xl font-extrabold flex items-center gap-2 ${darkMode ? "text-indigo-400" : `text-${activeTheme.accent}-700`}` },
+                                createElement(Icon, { name: "brain-circuit", className: darkMode ? "text-indigo-500" : `text-${activeTheme.accent}-600` }), " Mémo J"
+                            ),
+                            createElement("div", { className: "flex flex-wrap gap-2 items-center" },
+                                // Theme buttons
+                                createElement("div", { className: `flex items-center gap-1 p-1 rounded-full border ${darkMode ? "border-slate-700 bg-slate-800" : "border-slate-200 bg-white shadow-md"}` },
+                                    Object.values(THEMES).map(t => createElement("button", {
+                                        key: t.id, onClick: () => setTheme(t.id),
+                                        className: `w-8 h-8 rounded-full transition-transform hover:scale-110 border-2 bg-cover bg-center relative overflow-hidden ${theme === t.id ? `ring-2 ring-offset-2 ring-offset-white ring-${t.accent}-400 scale-110 border-white` : "border-transparent opacity-80 hover:opacity-100"}`,
+                                    }, t.type === "image" ? createElement("div", { className: "w-full h-full", style: { backgroundImage: t.bgImage } }) : createElement("div", { className: "w-full h-full bg-slate-100" })))
+                                ),
+                                // View switcher
+                                createElement("div", { className: `flex p-1 rounded-xl border ${darkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-md"}` },
+                                    createElement("button", { onClick: () => setViewMode("list"), className: `p-2 rounded-lg ${viewMode === "list" ? (darkMode ? "bg-slate-700 text-white" : "bg-indigo-50 text-indigo-700 font-bold") : "text-slate-500"}` }, createElement(Icon, { name: "layout-list" })),
+                                    createElement("button", { onClick: () => setViewMode("calendar"), className: `p-2 rounded-lg ${viewMode === "calendar" ? (darkMode ? "bg-slate-700 text-white" : "bg-indigo-50 text-indigo-700 font-bold") : "text-slate-500"}` }, createElement(Icon, { name: "layout-grid" }))
+                                ),
+                                // Data
+                                createElement("div", { className: `flex rounded-xl border overflow-hidden ${darkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-md"}` },
+                                    createElement("button", { onClick: exportData, className: "p-2.5 hover:bg-slate-100" }, createElement(Icon, { name: "download" })),
+                                    createElement("button", { onClick: () => fileInputRef.current.click(), className: "p-2.5 hover:bg-slate-100" }, createElement(Icon, { name: "upload" }))
+                                ),
+                                createElement("input", { type: "file", ref: fileInputRef, onChange: importData, className: "hidden", accept: ".json" }),
+                                // Dark Mode
+                                createElement("button", { onClick: () => setDarkMode(!darkMode), className: `p-2.5 rounded-xl border ${darkMode ? "bg-slate-800 border-slate-700 text-yellow-400" : "bg-white border-slate-200 text-slate-600 shadow-md"}` }, darkMode ? createElement(Icon, { name: "sun" }) : createElement(Icon, { name: "moon" }))
+                            )
+                        ),
+                        // Search
+                        createElement("div", { className: "relative" },
+                            createElement("div", { className: "absolute left-4 top-3.5" }, createElement(Icon, { name: "search", className: "text-slate-500" })),
+                            createElement("input", { type: "text", placeholder: "Rechercher...", value: searchQuery, onChange: e => setSearchQuery(e.target.value), className: `w-full pl-12 pr-4 py-3 rounded-2xl border-2 outline-none ${darkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-800"}` })
+                        )
+                    ),
+
+                    // FORM ADD
+                    createElement("div", { className: `p-5 rounded-3xl shadow-sm border mb-8 ${darkMode ? "bg-slate-800 border-slate-700" : `${activeTheme.cardBg} border-white shadow-lg`}` },
+                        createElement("form", { onSubmit: addTask, className: "flex flex-col gap-4" },
+                            createElement("div", { className: "flex flex-col md:flex-row gap-3" },
+                                createElement("input", { type: "text", value: newTask, onChange: e => setNewTask(e.target.value), placeholder: "Nouveau sujet...", className: `flex-grow p-3 rounded-xl border-2 outline-none ${darkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white/90 border-slate-200"}` }),
+                                createElement("input", { type: "date", value: newDate, onChange: e => setNewDate(e.target.value), className: `md:w-40 p-3 rounded-xl border-2 outline-none ${darkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white/90 border-slate-200"}` }),
+                                createElement("button", { type: "submit", className: `px-6 py-3 rounded-xl text-white font-bold shadow-md hover:scale-105 active:scale-95 ${darkMode ? "bg-indigo-600" : activeTheme.btnColor}` }, createElement(Icon, { name: "plus" }))
+                            ),
+                            createElement("div", { className: "grid grid-cols-2 md:grid-cols-5 gap-2" },
+                                Object.values(PATTERNS).map(pat => 
+                                    createElement("button", {
+                                        key: pat.id, type: "button", onClick: () => setSelectedPattern(pat.id),
+                                        className: `flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all text-center ${selectedPattern === pat.id ? `${darkMode ? "bg-slate-900" : "bg-white"} border-transparent ring-2 ${pat.style.light.replace("border-indigo-100", "border-transparent")}` : `${darkMode ? "bg-slate-900/50 border-slate-700" : "bg-white/80 border-slate-200"}`}`
+                                    },
+                                    createElement("span", { className: `text-xs font-bold ${selectedPattern === pat.id ? (darkMode ? "text-indigo-400" : "text-indigo-600") : ""}` }, pat.label),
+                                    createElement("span", { className: "text-[10px] opacity-70" }, pat.description)
+                                ))
+                            ),
+                            selectedPattern === "custom" && createElement("div", { className: `mt-2 p-3 rounded-xl border-2 ${darkMode ? "bg-slate-900/50 border-slate-700" : "bg-white/80 border-slate-200"}` },
+                                createElement("input", { type: "text", value: customSequenceStr, onChange: e => setCustomSequenceStr(e.target.value), placeholder: "Ex: 0, 2, 5, 10", className: "w-full p-2 rounded-lg text-sm border" })
+                            )
+                        )
+                    ),
+
+                    // VIEWS
+                    viewMode === "list" ? createElement("div", { className: "space-y-8" },
+                        overdueTasks.length > 0 && createElement("div", { className: "animate-in" },
+                            createElement("h3", { className: `flex items-center gap-2 font-bold mb-3 uppercase text-sm ${darkMode ? "text-amber-400" : "text-amber-700"}` }, createElement(Icon, { name: "zap", size: 16 }), ` À Prioriser (${overdueTasks.length})`),
+                            createElement("div", { className: "space-y-3" }, overdueTasks.map(t => createElement(TaskCard, { key: t.id, task: t, completeReview, shiftDate, updateTaskDate, deleteTask, toggleMastery, isOverdue: true, darkMode, theme: activeTheme })))
+                        ),
+                        createElement("div", null,
+                            createElement("h3", { className: `flex items-center gap-2 font-bold mb-3 uppercase text-sm ${darkMode ? "text-indigo-400" : `text-${activeTheme.accent}-900`}` }, createElement(Icon, { name: "clock", size: 16 }), ` Aujourd'hui (${todayTasks.length})`),
+                            todayTasks.length === 0 && overdueTasks.length === 0 && createElement("div", { className: `p-6 text-center rounded-2xl border mb-4 ${darkMode ? "bg-slate-800 text-slate-400" : "bg-white/80 text-slate-500"}` }, "🧘 Rien de prévu."),
+                            createElement("div", { className: "space-y-3" }, todayTasks.map(t => createElement(TaskCard, { key: t.id, task: t, completeReview, shiftDate, updateTaskDate, deleteTask, toggleMastery, isToday: true, darkMode, theme: activeTheme })))
+                        ),
+                        futureTasks.length > 0 && createElement("div", null,
+                            createElement("h3", { className: "flex items-center gap-2 font-bold mb-3 uppercase text-sm opacity-70" }, createElement(Icon, { name: "calendar", size: 16 }), " À Venir"),
+                            createElement("div", { className: "space-y-3 opacity-95" }, futureTasks.map(t => createElement(TaskCard, { key: t.id, task: t, completeReview, shiftDate, updateTaskDate, deleteTask, toggleMastery, darkMode, theme: activeTheme })))
+                        )
+                    ) : createElement(CalendarView, { tasks, today, darkMode, theme: activeTheme })
+                )
+            ));
+        }
+
+        // Sub-Components
+        function TaskCard({ task, completeReview, shiftDate, updateTaskDate, deleteTask, toggleMastery, isOverdue, isToday, darkMode, theme }) {
+            const [isEditingDate, setIsEditingDate] = useState(false);
+            
+            let sequence, patternLabel, patternStyle;
+            if (task.patternId === "custom" && task.customSequence) { sequence = task.customSequence; patternLabel = "Perso"; patternStyle = PATTERNS.custom.style; }
+            else { const pat = PATTERNS[task.patternId] || PATTERNS.standard; sequence = pat.sequence; patternLabel = pat.label; patternStyle = pat.style; }
+
+            const isCompleted = task.status === "completed";
+            const progress = (task.currentStep / (sequence.length - 1)) * 100;
+            const mastery = MASTERY_LEVELS[task.mastery || 0];
+
+            let containerClass = "";
+            const bgOpacity = theme.type === "image" ? (darkMode ? "bg-slate-800/90" : "bg-white") : (darkMode ? "bg-slate-800" : "bg-white");
+
+            if (isOverdue) containerClass = darkMode ? "bg-amber-900/40 border-amber-700/50" : "bg-amber-50/90 border-amber-200 ring-1 ring-amber-300";
+            else if (isToday) containerClass = `${bgOpacity} shadow-lg ring-2 ${theme.ring} ring-offset-1 ${darkMode ? "border-indigo-900" : "border-indigo-100"}`;
+            else containerClass = `${bgOpacity} shadow-sm ${darkMode ? "border-slate-700" : "border-slate-200"}`;
+
+            const patternStyleString = darkMode ? patternStyle.dark : patternStyle.light;
+            const masteryStyleString = darkMode ? mastery.style.dark : mastery.style.light;
+
+            return createElement("div", { className: `relative overflow-hidden rounded-xl p-4 border transition-all ${containerClass} ${isCompleted ? 'opacity-60' : ''}` },
+                !isCompleted && createElement("div", { className: `absolute bottom-0 left-0 h-1 transition-all duration-1000 ${isOverdue ? "bg-amber-400" : `bg-gradient-to-r from-${theme.accent}-400 to-purple-400`}`, style: { width: `${progress}%` } }),
+                createElement("div", { className: "flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between" },
+                    createElement("div", { className: "flex-1 min-w-0" },
+                        createElement("div", { className: "flex items-center gap-2 mb-1" },
+                            createElement("span", { className: `text-[10px] font-bold px-1.5 py-0.5 rounded border ${patternStyleString.replace("ring-2", "")} ${darkMode ? "bg-transparent" : "bg-white/80"}` }, patternLabel),
+                            createElement("span", { className: `text-xs font-medium ${darkMode ? "text-slate-400" : "text-slate-500"}` }, isCompleted ? "Fini" : `J${sequence[task.currentStep]}`)
+                        ),
+                        createElement("h4", { className: `font-semibold truncate ${isCompleted ? "line-through" : ""}` }, task.title),
+                        createElement("div", { className: "flex items-center gap-3 mt-1" },
+                            createElement("div", { className: "flex items-center gap-2 text-xs opacity-70" },
+                                !isCompleted && isEditingDate ? 
+                                    createElement("input", { type: "date", autoFocus: true, value: task.dueDate, onChange: e => { if(e.target.value) { updateTaskDate(task.id, e.target.value); setIsEditingDate(false); } }, onBlur: () => setIsEditingDate(false), className: "p-1 rounded text-xs border" }) :
+                                    createElement("button", { onClick: () => !isCompleted && setIsEditingDate(true), disabled: isCompleted, className: "flex items-center gap-1 group text-left" },
+                                        isOverdue && createElement("span", { className: "text-amber-500 font-bold flex items-center gap-1" }, createElement(Icon, { name: "zap", size: 10 }), " Prioritaire"),
+                                        createElement("span", null, task.dueDate)
+                                    )
+                            ),
+                            !isCompleted && createElement("button", { onClick: () => toggleMastery(task.id), className: `flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-transparent ${masteryStyleString}` }, createElement(Icon, { name: "trophy", size: 10 }), mastery.label)
+                        )
+                    ),
+                    !isCompleted && createElement("div", { className: "flex items-center gap-2 self-end sm:self-center" },
+                        createElement("div", { className: `flex items-center rounded-lg p-1 ${darkMode ? "bg-slate-900" : "bg-slate-100"}` },
+                            createElement("button", { onClick: () => shiftDate(task.id, -1), className: "p-1.5" }, createElement(Icon, { name: "chevron-left", size: 16 })),
+                            createElement("div", { className: "w-px h-4 mx-1 bg-slate-300" }),
+                            createElement("button", { onClick: () => shiftDate(task.id, 1), className: "p-1.5" }, createElement(Icon, { name: "chevron-right", size: 16 }))
+                        ),
+                        createElement("button", { onClick: () => completeReview(task.id), className: `flex items-center gap-1 px-3 py-2 rounded-lg text-white font-medium text-sm shadow-sm hover:shadow-md ${isOverdue ? "bg-amber-500" : theme.btnColor}` }, createElement(Icon, { name: "check-circle-2", size: 16 }), " Fait"),
+                        createElement("button", { onClick: () => deleteTask(task.id), className: "p-2 opacity-50 hover:opacity-100" }, createElement(Icon, { name: "trash-2", size: 16 }))
+                    ),
+                    isCompleted && createElement("button", { onClick: () => deleteTask(task.id), className: "p-2 opacity-50 hover:opacity-100" }, createElement(Icon, { name: "trash-2", size: 16 }))
+                )
+            );
+        }
+
+        function CalendarView({ tasks, today, darkMode, theme }) {
+            const days = [];
+            for (let i = 0; i < 35; i++) { const d = new Date(); d.setDate(d.getDate() + i); days.push(d.toISOString().split("T")[0]); }
+            const overdue = tasks.filter(t => t.status !== "completed" && t.dueDate < today);
+            const bgOpacity = theme.type === "image" ? (darkMode ? "bg-slate-800/90" : "bg-white") : (darkMode ? "bg-slate-800" : "bg-white");
+
+            return createElement("div", { className: `rounded-2xl shadow-sm border p-4 ${bgOpacity} ${darkMode ? "border-slate-700" : "border-slate-200"}` },
+                createElement("h3", { className: `font-bold mb-4 px-2 ${darkMode ? "text-slate-300" : "text-slate-700"}` }, "35 Prochains Jours"),
+                createElement("div", { className: "grid grid-cols-5 md:grid-cols-7 gap-2" },
+                    overdue.length > 0 && createElement("div", { className: `min-h-[80px] rounded-xl p-2 border flex flex-col items-center text-center relative overflow-hidden ${darkMode ? "bg-amber-900/20 border-amber-700/50" : "bg-amber-50/80 border-amber-200"}` },
+                        createElement("div", { className: `absolute top-0 left-0 w-1 h-full ${darkMode ? "bg-amber-500" : "bg-amber-400"}` }),
+                        createElement("span", { className: `text-[10px] uppercase font-bold ${darkMode ? "text-amber-400" : "text-amber-600"}` }, "Retard"),
+                        createElement("span", { className: `text-lg font-bold mb-1 ${darkMode ? "text-amber-300" : "text-amber-700"}` }, overdue.length)
+                    ),
+                    days.map(dateStr => {
+                        const dayTasks = tasks.filter(t => t.status !== "completed" && t.dueDate === dateStr);
+                        const isToday = dateStr === today;
+                        const dateObj = new Date(dateStr);
+                        const dayName = dateObj.toLocaleDateString("fr-FR", { weekday: "short" });
+                        const dayNum = dateObj.getDate();
+                        return createElement("div", { key: dateStr, className: `min-h-[80px] rounded-xl p-2 border flex flex-col items-center text-center ${isToday ? (darkMode ? "bg-indigo-900/30 border-indigo-500/50" : "bg-indigo-50/80 border-indigo-200") : (darkMode ? "bg-slate-900 border-slate-700" : "bg-slate-50/50 border-slate-100")}` },
+                            createElement("span", { className: "text-[10px] uppercase font-bold opacity-60" }, dayName),
+                            createElement("span", { className: "text-lg font-bold mb-1" }, dayNum),
+                            createElement("div", { className: "flex flex-wrap justify-center gap-1 w-full" },
+                                dayTasks.map(t => createElement("div", { key: t.id, className: `h-1.5 w-1.5 rounded-full ${t.patternId === "intensive" ? "bg-fuchsia-400" : (t.patternId === "las" ? "bg-sky-400" : "bg-indigo-400")}` }))
+                            )
+                        );
+                    })
+                )
+            );
+        }
+
+        // START APP
+        const root = createRoot(document.getElementById("root"));
+        root.render(createElement(App));
+    </script>
+</body>
+</html>
